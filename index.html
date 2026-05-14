@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trạm Điều Khiển BKAttendance</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; background: #ececf1; padding: 20px; display: flex; justify-content: center; }
+        .monitor { background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); width: 100%; max-width: 600px; }
+        #terminal { background: #1e1e1e; color: #00ff00; padding: 15px; border-radius: 8px; height: 300px; overflow-y: auto; font-family: monospace; font-size: 15px; line-height: 1.6; }
+        .controls { margin-top: 15px; display: flex; gap: 10px; align-items: center;}
+        input { flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 5px; outline: none;}
+        button { padding: 10px 20px; background: #059669; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold;}
+        button:hover { background: #047857; }
+        .text-sent { color: #facc15; } 
+    </style>
+</head>
+<body>
+    <div class="monitor">
+        <h2>📡 Trạm BKAttendance ESP32</h2>
+        <div id="terminal">Đang chờ hệ thống...<br></div>
+
+        <!-- Khối điều khiển Giờ Bắt Đầu & Ca học -->
+        <div class="controls" style="background: #f3f4f6; padding: 10px; border-radius: 5px;">
+            <input type="time" id="deadlineInput" style="flex: 0.5;">
+            <button onclick="sendDeadline()" style="background: #eab308; color: black;">Cài Giờ Bắt Đầu</button>
+            <button onclick="setSession(1)" style="background: #3b82f6;">Ca 1 (Vào)</button>
+            <button onclick="setSession(2)" style="background: #8b5cf6;">Ca 2 (Ra)</button>
+        </div>
+
+        <!-- Khối điều khiển Giờ Kết Thúc (MỚI THÊM) -->
+        <div class="controls" style="background: #fee2e2; padding: 10px; border-radius: 5px;">
+            <input type="time" id="endTimeInput" style="flex: 0.5;">
+            <button onclick="sendEndTime()" style="background: #ef4444; color: white;">Cài Giờ Kết Thúc</button>
+        </div>
+
+        <!-- Khối Gửi Tin Nhắn -->
+        <div class="controls">
+            <input type="text" id="commandInput" placeholder="Gửi thông báo (VD: Xin Chao)" maxlength="16">
+            <button onclick="sendCommand()">Gửi Chữ</button>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        const terminal = document.getElementById('terminal');
+        const inputField = document.getElementById('commandInput');
+
+        socket.on('new_data', (data) => {
+            const time = new Date().toLocaleTimeString();
+            terminal.innerHTML += `[${time}] 📥 Nhận: <span style="color: #fff;">${data}</span><br>`;
+            terminal.scrollTop = terminal.scrollHeight; 
+        });
+
+        function sendCommand() {
+            const msg = inputField.value.trim();
+            if (msg !== "") {
+                socket.emit('send_command', msg);
+                logAction(`📤 Gửi chữ: <span class="text-sent">${msg}</span>`);
+                inputField.value = "";
+            }
+        }
+
+        function sendDeadline() {
+            const timeVal = document.getElementById('deadlineInput').value;
+            if (timeVal !== "") {
+                socket.emit('send_command', `DEADLINE:${timeVal}`);
+                logAction(`⏰ Cài mốc giờ bắt đầu: <span class="text-sent">${timeVal}</span>`);
+            } else { alert("Vui lòng chọn giờ bắt đầu!"); }
+        }
+
+        // HÀM MỚI: Xử lý gửi Giờ Kết Thúc
+        function sendEndTime() {
+            const timeVal = document.getElementById('endTimeInput').value;
+            if (timeVal !== "") {
+                // Gửi lệnh ENDTIME:HH:MM qua server để đẩy xuống MQTT
+                socket.emit('send_command', `ENDTIME:${timeVal}`);
+                logAction(`🛑 Cài mốc giờ kết thúc: <span class="text-sent">${timeVal}</span>`);
+            } else { alert("Vui lòng chọn giờ kết thúc!"); }
+        }
+
+        function setSession(num) {
+            socket.emit('send_command', `SESSION:${num}`);
+            logAction(`🔄 Chuyển sang: <span class="text-sent">Điểm danh Lần ${num}</span>`);
+        }
+
+        function logAction(htmlText) {
+            const time = new Date().toLocaleTimeString();
+            terminal.innerHTML += `[${time}] ${htmlText}<br>`;
+            terminal.scrollTop = terminal.scrollHeight;
+        }
+
+        inputField.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendCommand(); });
+    </script>
+</body>
+</html>
