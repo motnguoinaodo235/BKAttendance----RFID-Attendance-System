@@ -1,7 +1,7 @@
 #include "network_manager.h"
 
-const char* ssid = "Bao Ngoc 4";
-const char* password = "@BaoNgoc4";
+const char* ssid = "YOUR_WIFI_SSID";
+const char* password = "YOUR_WIFI_PASSWORD";
 const char* mqtt_topic_pub = "test/vinh/mqtt/send"; 
 const char* mqtt_topic_sub = "test/vinh/mqtt/recv"; 
 
