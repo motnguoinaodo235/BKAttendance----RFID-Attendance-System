@@ -16,11 +16,11 @@ Hệ thống bao gồm 3 thành phần chính:
 
 ```text
 📦 DADN-BKAttendance
- ┣ 📂 Firmware         # Source code C++ cho ESP32 (Sử dụng PlatformIO)
+ ┣ 📂 hardware         # Source code C++ cho ESP32 (Sử dụng PlatformIO)
  ┃ ┣ 📜 main.cpp
  ┃ ┣ 📜 rfid_manager.cpp
  ┃ ┗ 📜 ... (Chi tiết xem tại README trong thư mục Firmware)
- ┣ 📂 WebDemo          # Source code Node.js cho Trạm điều khiển Web
+ ┣ 📂 demo_web          # Source code Node.js cho Trạm điều khiển Web
  ┃ ┣ 📜 server.js
  ┃ ┣ 📜 index.html
  ┃ ┗ 📜 package.json   # (Chi tiết xem tại README trong thư mục WebDemo)
