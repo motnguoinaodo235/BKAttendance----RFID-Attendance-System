@@ -1,6 +1,4 @@
-markdown_content = """# DADN-BKAttendance: Hệ thống Điểm danh Tự động & Giám sát An toàn với ESP32
-
-## 📖 Giới thiệu Dự án
+## 📖 Giới thiệu
 **DADN-BKAttendance** là hệ thống quản lý điểm danh thông minh chạy trên vi điều khiển ESP32, ứng dụng hệ điều hành thời gian thực (FreeRTOS) để quản lý đồng thời nhiều tác vụ phức tạp. 
 
 Hệ thống kết hợp đọc thẻ RFID, mở cổng bằng mật khẩu dự phòng, hiển thị thông tin trực quan, đồng thời tích hợp tính năng giám sát môi trường để tự động cảnh báo và xử lý sự cố hỏa hoạn. Dữ liệu được đồng bộ liên tục với server thông qua giao thức MQTT.
