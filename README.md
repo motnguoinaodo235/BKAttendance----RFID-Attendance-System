@@ -1,5 +1,3 @@
-markdown_web = """# 🌐 Trạm Điều Khiển BKAttendance (Web Dashboard)
-
 ## 📖 Giới thiệu
 Đây là giao diện điều khiển trung tâm (Web Dashboard) dành riêng cho hệ thống điểm danh **DADN-BKAttendance**. Ứng dụng được xây dựng trên nền tảng **Node.js**, đóng vai trò như một trạm giám sát và điều khiển từ xa cho mạch ESP32 thông qua giao thức **MQTT**.
 
