@@ -22,5 +22,4 @@ markdown_web = """# 🌐 Trạm Điều Khiển BKAttendance (Web Dashboard)
 
 **2. Cài đặt thư viện:**
 Mở terminal/command prompt tại thư mục chứa file `server.js` và chạy lệnh:
-npm start
-Hoặc chạy lệnh: node server.js
+npm start hoặc chạy lệnh: node server.js
