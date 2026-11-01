@@ -75,6 +75,9 @@ export default function MainLayout({ role = 'admin' }) {
           <NavLink to={`/${role}/attendance`} className={({ isActive }) => Math.max(0, isActive) || window.location.pathname.startsWith(`/${role}/attendance`) ? "topbar-nav-link active" : "topbar-nav-link"}>
             Điểm danh
           </NavLink>
+          <NavLink to={`/${role}/sessions`} className={({ isActive }) => Math.max(0, isActive) || window.location.pathname.startsWith(`/${role}/sessions`) ? "topbar-nav-link active" : "topbar-nav-link"}>
+            Buổi học
+          </NavLink>
           <NavLink to={`/${role}/students`} className={({ isActive }) => Math.max(0, isActive) || window.location.pathname.startsWith(`/${role}/students`) ? "topbar-nav-link active" : "topbar-nav-link"}>
             Sinh viên
           </NavLink>

@@ -26,48 +26,77 @@ exports.getAllStudents = async (req, res) => {
   res.json({ success: true, data: students });
 };
 
+// Hàm dùng chung để đẩy dữ liệu lịch học & thẻ xuống ESP32
+// Gửi 1 bản ghi cho mỗi (sinh viên, buổi học hôm nay) để ESP32
+// có thể chọn đúng ca đang active tại thời điểm quét thẻ.
+const executeHardwareSync = async () => {
+  const db = require('../config/db');
+  const { mqttClient } = require('../../server');
+
+  // Ưu tiên buổi học HÔM NAY; nếu không có thì lấy buổi gần nhất.
+  // Mỗi (sinh viên × buổi học hôm nay) cho một hàng riêng biệt để
+  // ESP32 tự phát hiện ca đang active khi quét thẻ.
+  const [rows] = await db.execute(`
+    SELECT
+      r.rfid_uid,
+      s.student_id,
+      s.name,
+      c.class_name,
+      sess.start_time,
+      sess.end_time,
+      sess.late_threshold
+    FROM rfid_cards r
+    JOIN students s ON r.student_id = s.student_id
+    JOIN class_students cs ON s.student_id = cs.student_id
+    JOIN classes c ON cs.class_id = c.class_id
+    JOIN sessions sess ON c.class_id = sess.class_id
+    WHERE r.rfid_uid IS NOT NULL
+      AND sess.session_date = CURDATE()
+    ORDER BY sess.start_time ASC, s.student_id ASC
+  `);
+
+  const removeAccents = (str) => {
+    if (!str) return str;
+    return str.normalize('NFD')
+              .replace(/[\u0300-\u036f]/g, '')
+              .replace(/đ/g, 'd').replace(/Đ/g, 'D');
+  };
+
+  const payloadArray = rows.map(row => ({
+    u: row.rfid_uid,
+    i: row.student_id,
+    n: removeAccents(row.name),
+    c: removeAccents(row.class_name) || "Chua co lop",
+    st: typeof row.start_time === 'string' ? row.start_time : (row.start_time ? String(row.start_time) : "00:00:00"),
+    et: typeof row.end_time === 'string' ? row.end_time : (row.end_time ? String(row.end_time) : "00:00:00"),
+    lt: typeof row.late_threshold === 'string' ? row.late_threshold : (row.late_threshold ? String(row.late_threshold) : "00:00:00")
+  }));
+
+  const jsonStr = 'SYNC_DB:' + JSON.stringify(payloadArray);
+
+  // Log chi tiết để debug
+  console.log(`[HardwareSync] Chuẩn bị gửi ${payloadArray.length} bản ghi (${new Date().toLocaleTimeString('vi-VN')}):`);
+  payloadArray.forEach((p, idx) => {
+    console.log(`  [${idx}] UID=${p.u}, ID=${p.i}, Name=${p.n}, Class=${p.c}, St=${p.st}, Et=${p.et}, Lt=${p.lt}`);
+  });
+
+  if (mqttClient && mqttClient.connected) {
+    mqttClient.publish('test/vinh/mqtt/recv', jsonStr);
+    console.log(`[HardwareSync] Đã publish SYNC_DB (${jsonStr.length} bytes) qua MQTT.`);
+    return { success: true, count: payloadArray.length };
+  }
+  return { success: false, message: 'MQTT Broker chưa kết nối.' };
+};
+
+exports.executeHardwareSync = executeHardwareSync;
+
 exports.syncHardware = async (req, res) => {
   try {
-    const db = require('../config/db');
-    const { mqttClient } = require('../../server');
-    
-    // Lấy danh sách thẻ RFID kèm thông tin sinh viên và 1 lớp học bất kỳ (cùng giờ bắt đầu)
-    const [rows] = await db.execute(`
-      SELECT 
-        r.rfid_uid, 
-        s.student_id, 
-        s.name,
-        MAX(c.class_name) as class_name,
-        MAX(sess.start_time) as start_time,
-        MAX(sess.end_time) as end_time,
-        MAX(sess.late_threshold) as late_threshold
-      FROM rfid_cards r 
-      JOIN students s ON r.student_id = s.student_id
-      LEFT JOIN class_students cs ON s.student_id = cs.student_id
-      LEFT JOIN classes c ON cs.class_id = c.class_id
-      LEFT JOIN sessions sess ON c.class_id = sess.class_id
-      WHERE r.rfid_uid IS NOT NULL
-      GROUP BY s.student_id, r.rfid_uid, s.name
-    `);
-
-    // Tạo mảng gọn nhẹ để gửi
-    const payloadArray = rows.map(row => ({
-      u: row.rfid_uid,
-      i: row.student_id,
-      n: row.name,
-      c: row.class_name || "Chưa có lớp",
-      st: row.start_time || "00:00:00",
-      et: row.end_time || "00:00:00",
-      lt: row.late_threshold || "00:00:00"
-    }));
-
-    const jsonStr = 'SYNC_DB:' + JSON.stringify(payloadArray);
-    
-    if (mqttClient && mqttClient.connected) {
-      mqttClient.publish('test/vinh/mqtt/recv', jsonStr);
-      res.json({ success: true, message: `Đã đồng bộ ${payloadArray.length} thẻ xuống phần cứng.` });
+    const result = await executeHardwareSync();
+    if (result.success) {
+      res.json({ success: true, message: `Đã đồng bộ ${result.count} thẻ xuống phần cứng.` });
     } else {
-      res.status(500).json({ success: false, message: 'Chưa kết nối đến MQTT Broker.' });
+      res.status(500).json({ success: false, message: result.message });
     }
   } catch (error) {
     console.error('Lỗi khi đồng bộ phần cứng:', error);
@@ -75,65 +104,51 @@ exports.syncHardware = async (req, res) => {
   }
 };
 
-exports.createStudent = async (req, res) => {
-  try {
-    const { name, code, rfidUid } = req.body;
-    if (!name || !code) {
-      return res.status(400).json({ success: false, message: 'Tên và MSSV là bắt buộc' });
-    }
-    const insertId = await StudentModel.createStudent(name, code);
-    
-    // Nếu có mã RFID thì gán luôn
-    if (rfidUid) {
-      await StudentModel.assignRfid(insertId, rfidUid);
-    }
-    
-    res.json({ success: true, message: 'Thêm sinh viên thành công', data: { id: insertId } });
-  } catch (error) {
-    console.error('Lỗi khi thêm sinh viên:', error);
-    res.status(500).json({ success: false, message: 'Lỗi máy chủ khi thêm sinh viên' });
-  }
-};
-
 exports.assignRfid = async (req, res) => {
-  const { id } = req.params; // student_id
+  const { id } = req.params;
   const { rfidUid } = req.body;
 
   if (!rfidUid) {
-    return res.status(400).json({ success: false, message: 'Vui lòng cung cấp mã RFID' });
+    return res.status(400).json({ success: false, message: 'Thiếu mã RFID' });
   }
 
-  await StudentModel.assignRfid(id, rfidUid);
-  res.json({ success: true, message: 'Gán thẻ RFID thành công' });
+  try {
+    const isNew = await StudentModel.assignRfid(id, rfidUid);
+    res.json({
+      success: true,
+      message: isNew ? 'Gán thẻ mới thành công' : 'Cập nhật thẻ thành công'
+    });
+  } catch (error) {
+    console.error('Database error in assignRfid:', error);
+    res.status(400).json({ success: false, message: error.message || 'Lỗi khi gán thẻ RFID' });
+  }
 };
 
 exports.updateStudent = async (req, res) => {
   const { id } = req.params;
-  const { name, code, rfidUid } = req.body;
+  const { name, rfidUid, classId } = req.body;
+
+  if (!name) {
+    return res.status(400).json({ success: false, message: 'Tên là bắt buộc' });
+  }
 
   try {
-    await StudentModel.updateStudent(
-      id,
-      name || null,
-      code || null,
-      rfidUid !== undefined ? rfidUid : null
-    );
-    res.json({ success: true, message: 'Cập nhật sinh viên thành công' });
+    await StudentModel.updateStudent(id, name, rfidUid || null, classId || null);
+    res.json({ success: true, message: 'Cập nhật thông tin sinh viên thành công' });
   } catch (error) {
     console.error('Database error in updateStudent:', error);
-    const message = error.sqlMessage || 'Lỗi máy chủ khi cập nhật thông tin';
-    res.status(400).json({ success: false, message });
+    res.status(400).json({ success: false, message: error.message || 'Lỗi khi cập nhật sinh viên' });
   }
 };
 
 exports.deleteStudent = async (req, res) => {
   const { id } = req.params;
+
   try {
     await StudentModel.deleteStudent(id);
     res.json({ success: true, message: 'Xóa sinh viên thành công' });
   } catch (error) {
     console.error('Database error in deleteStudent:', error);
-    const message = error.sqlMessage || 'Lỗi máy chủ khi xóa sinh viên';
-    res.status(400).json({ success: false, message });
+    res.status(400).json({ success: false, message: error.message || 'Lỗi khi xóa sinh viên' });
   }
 };

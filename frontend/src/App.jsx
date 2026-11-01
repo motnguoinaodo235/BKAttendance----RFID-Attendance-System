@@ -28,6 +28,7 @@ import AdminAttendanceStats from './pages/Attendance/AdminAttendanceStats';
 import AdminStudents from './pages/Attendance/AdminStudents';
 import AdminLecturers from './pages/Attendance/AdminLecturers';
 import AdminProfile from './pages/AdminProfile';
+import Sessions from './pages/Attendance/Sessions';
 
 export const FlashContext = createContext(null);
 
@@ -72,6 +73,7 @@ function App() {
             <Route path="attendance" element={<AdminAttendanceList />} />
             <Route path="attendance/:classId" element={<AdminAttendanceDetail />} />
             <Route path="attendance/:classId/stats" element={<AdminAttendanceStats />} />
+            <Route path="sessions" element={<Sessions role="admin" />} />
             <Route path="students" element={<AdminStudents />} />
             <Route path="lecturers" element={<AdminLecturers />} />
             <Route path="profile" element={<AdminProfile />} />
@@ -84,6 +86,7 @@ function App() {
             <Route path="attendance" element={<AttendanceList />} />
             <Route path="attendance/:classId" element={<AttendanceDetail />} />
             <Route path="attendance/:classId/stats" element={<AttendanceStats />} />
+            <Route path="sessions" element={<Sessions role="lecturer" />} />
             <Route path="students" element={<Students />} />
             <Route path="profile" element={<LecturerProfile />} />
           </Route>

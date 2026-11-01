@@ -1,10 +1,8 @@
 #ifndef KEYPAD_MANAGER_H
 #define KEYPAD_MANAGER_H
 
-#include <Keypad.h>
-#include "shared_data.h"
-#include "config.h"
+#include <Arduino.h>
 
 void keypadTask(void *pvParameters);
 
-#endif
+#endif // KEYPAD_MANAGER_H

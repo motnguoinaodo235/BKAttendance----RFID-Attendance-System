@@ -7,57 +7,56 @@
 #include "keypad_manager.h" 
 #include "display_manager.h"
 
-QueueHandle_t mqttTxQueue;
-QueueHandle_t displayQueue; // Định nghĩa queue màn hình
-SemaphoreHandle_t settingsMutex;
+// Định nghĩa FreeRTOS Queues và Mutex
+QueueHandle_t mqttTxQueue = NULL;
+QueueHandle_t displayQueue = NULL;
+SemaphoreHandle_t settingsMutex = NULL;
 
-// Khởi tạo biến toàn cục
-int shared_deadlineH = 0;
-int shared_deadlineM = 0;
-int shared_endH = 0;
-int shared_endM = 0;
-bool shared_hasDeadline = false;
-bool shared_hasEndTime = false;
+// Khởi tạo các biến dùng chung
 int shared_currentSession = 1;
 char shared_serverMessage[32] = "";
 
-bool flag_uiUpdateDeadline = false;
-bool flag_uiUpdateSession = false;
-bool flag_uiUpdateMsg = false;
-
-float shared_temp = 0.0;
-float shared_hum = 0.0;
+float shared_temp = 0.0f;
+float shared_hum = 0.0f;
 bool shared_fireAlert = false;
+
+char currentClassName[64] = "";
+int currentClassStartH = 0, currentClassStartM = 0;
+int currentClassEndH = 0, currentClassEndM = 0;
+bool hasActiveQuery = false;
 
 void setup() {
     Serial.begin(115200);
-    setup_servo(); 
-    unlock_gate();
+    delay(500);
+    Serial.println("\n--- HE THONG DIEM DANH BK-ATTENDANCE KHOI DONG ---");
 
     mqttTxQueue = xQueueCreate(10, sizeof(MqttPayload));
-    displayQueue = xQueueCreate(5, sizeof(DisplayMessage)); // Queue chứa 5 lệnh hiển thị
+    displayQueue = xQueueCreate(10, sizeof(DisplayMessage));
     settingsMutex = xSemaphoreCreateMutex();
 
     if (mqttTxQueue == NULL || displayQueue == NULL || settingsMutex == NULL) {
-        Serial.println("Lỗi khởi tạo RTOS!");
+        Serial.println("[CRITICAL ERROR] Khong the khoi tao FreeRTOS Queues/Mutex!");
         return;
     }
 
-    // Core 0: Mạng (WiFi, MQTT, NTP)
+    // Core 0: Mạng (WiFi, MQTT Loop, NTP, Sync DB)
     xTaskCreatePinnedToCore(networkTask, "Network", 8192, NULL, 1, NULL, 0);
     
-    // Core 1: Hiển thị (LCD, LED, Buzzer) -> Ưu tiên cao hơn để UI mượt
+    // Core 1: Hiển thị (LCD, LED, Buzzer) -> Priority 2 để UI mượt mà, phản hồi tức thì
     xTaskCreatePinnedToCore(displayTask, "Display", 4096, NULL, 2, NULL, 1);
 
-    // Core 1: Phần cứng RFID
-    xTaskCreatePinnedToCore(rfidTask, "RFID", 8192, NULL, 1, NULL, 1);
+    // Core 1: Đọc thẻ RFID MFRC522
+    xTaskCreatePinnedToCore(rfidTask, "RFID", 4096, NULL, 1, NULL, 1);
 
-    // Core 1: Cảm biến và Servo
-    xTaskCreatePinnedToCore(sensorTask, "Sensor", 16384, NULL, 1, NULL, 0);
+    // Core 1: Điều khiển Servo mở/đóng cổng
     xTaskCreatePinnedToCore(servoTask, "Servo", 2048, NULL, 1, NULL, 1);
-    xTaskCreatePinnedToCore(keypadTask, "Keypad", 4096, NULL, 1, NULL, 1);
+
+    // Cac Task tuy chon phan cung (Bat/tat theo nhu cau):
+    xTaskCreatePinnedToCore(sensorTask, "Sensor", 8192, NULL, 1, NULL, 0);
+    xTaskCreatePinnedToCore(keypadTask, "Keypad", 3072, NULL, 1, NULL, 1);
 }
 
 void loop() {
+    // Xóa Task loop mặc định của Arduino để giải phóng tài nguyên
     vTaskDelete(NULL); 
 }

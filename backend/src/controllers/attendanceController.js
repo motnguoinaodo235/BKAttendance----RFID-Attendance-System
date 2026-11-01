@@ -12,14 +12,16 @@ class StatusStrategy {
 
 class PresentStrategy extends StatusStrategy {
   evaluate(checkinTimeStr, startTimeStr, lateThresholdStr) {
-    if (checkinTimeStr <= startTimeStr) return 'Present';
+    // Đến trước hoặc bằng ngưỡng trễ => Đúng giờ (Present)
+    if (checkinTimeStr <= lateThresholdStr) return 'Present';
     return null;
   }
 }
 
 class LateStrategy extends StatusStrategy {
   evaluate(checkinTimeStr, startTimeStr, lateThresholdStr) {
-    if (checkinTimeStr > startTimeStr && checkinTimeStr <= lateThresholdStr) return 'Late';
+    // Đến sau ngưỡng trễ => Đi muộn (Late)
+    if (checkinTimeStr > lateThresholdStr) return 'Late';
     return null;
   }
 }

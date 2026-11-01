@@ -11,6 +11,7 @@ const attendanceRoutes = require('./src/routes/attendanceRoutes');
 const classRoutes = require('./src/routes/classRoutes');
 const statsRoutes = require('./src/routes/statsRoutes');
 const lecturerRoutes = require('./src/routes/lecturerRoutes');
+const sessionRoutes = require('./src/routes/sessionRoutes');
 
 const app = express();
 const server = http.createServer(app);
@@ -42,6 +43,7 @@ app.use('/api/attendance', attendanceRoutes);
 app.use('/api/classes', classRoutes);
 app.use('/api/stats', statsRoutes);
 app.use('/api/lecturers', lecturerRoutes);
+app.use('/api/sessions', sessionRoutes);
 
 // Socket.io connection handler
 io.on('connection', (socket) => {

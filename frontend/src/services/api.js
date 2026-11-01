@@ -155,3 +155,115 @@ export const getLecturerHistory = async (userId) => {
   const data = await res.json();
   return data.data || [];
 };
+
+
+// ==================== QUẢN LÝ BUỔI HỌC (SESSIONS) ====================
+
+// Lấy danh sách buổi học (hỗ trợ filter ?classId=...&date=...)
+export const getSessions = async (filters = {}) => {
+  const query = new URLSearchParams(filters).toString();
+  const url = query ? `${API_URL}/sessions?${query}` : `${API_URL}/sessions`;
+  const res = await fetch(url);
+  const data = await res.json();
+  return data.data || [];
+};
+
+// Lấy các buổi học trong ngày hôm nay
+export const getTodaySessions = async () => {
+  const res = await fetch(`${API_URL}/sessions/today`);
+  const data = await res.json();
+  return data.data || [];
+};
+
+// Lấy ca học đang diễn ra
+export const getActiveSession = async () => {
+  const res = await fetch(`${API_URL}/sessions/active`);
+  const data = await res.json();
+  return data.data || null;
+};
+
+// Lấy chi tiết 1 buổi học
+export const getSessionById = async (sessionId) => {
+  const res = await fetch(`${API_URL}/sessions/${sessionId}`);
+  const data = await res.json();
+  return data.data || null;
+};
+
+// Thêm buổi học mới
+export const createSession = async (sessionData) => {
+  const res = await fetch(`${API_URL}/sessions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(sessionData)
+  });
+  return res.json();
+};
+
+// Cập nhật buổi học
+export const updateSession = async (sessionId, sessionData) => {
+  const res = await fetch(`${API_URL}/sessions/${sessionId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(sessionData)
+  });
+  return res.json();
+};
+
+// Xóa buổi học
+export const deleteSession = async (sessionId) => {
+  const res = await fetch(`${API_URL}/sessions/${sessionId}`, {
+    method: 'DELETE'
+  });
+  return res.json();
+};
+
+// ==================== QUẢN LÝ SINH VIÊN TRONG LỚP (CLASS STUDENTS) ====================
+
+// Lấy thông tin chi tiết 1 lớp học
+export const getClassById = async (classId) => {
+  const res = await fetch(`${API_URL}/classes/${classId}`);
+  const data = await res.json();
+  return data.data || null;
+};
+
+// Lấy danh sách sinh viên thuộc lớp
+export const getClassStudents = async (classId) => {
+  const res = await fetch(`${API_URL}/classes/${classId}/students`);
+  const data = await res.json();
+  return data.data || [];
+};
+
+// Thêm 1 sinh viên vào lớp
+export const addStudentToClass = async (classId, studentId) => {
+  const res = await fetch(`${API_URL}/classes/${classId}/students`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ studentId })
+  });
+  return res.json();
+};
+
+// Thêm nhiều sinh viên vào lớp
+export const addMultipleStudentsToClass = async (classId, studentIds) => {
+  const res = await fetch(`${API_URL}/classes/${classId}/students`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ studentIds })
+  });
+  return res.json();
+};
+
+// Xóa sinh viên khỏi lớp
+export const removeStudentFromClass = async (classId, studentId) => {
+  const res = await fetch(`${API_URL}/classes/${classId}/students/${studentId}`, {
+    method: 'DELETE'
+  });
+  return res.json();
+};
+
+// Lấy danh sách sinh viên chưa thuộc lớp (để chọn thêm vào lớp)
+export const getAvailableStudents = async (classId) => {
+  const res = await fetch(`${API_URL}/classes/${classId}/available-students`);
+  const data = await res.json();
+  return data.data || [];
+};

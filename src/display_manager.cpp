@@ -1,13 +1,16 @@
 #include "display_manager.h"
+#include <LiquidCrystal_I2C.h>
+#include "shared_data.h"
 
 LiquidCrystal_I2C lcd(LCD_ADDRESS, LCD_COLS, LCD_ROWS);
 
 UIState currentUIState = UI_IDLE;
-unsigned long uiTimer = 0;
-int beepCounter = 0;
-int targetBeeps = 0;
+static unsigned long uiTimer = 0;
+static int beepCounter = 0;
+static int targetBeeps = 0;
 
 void setup_display_hardware() {
+    vTaskDelay(pdMS_TO_TICKS(200));
     lcd.init();
     lcd.backlight();
     pinMode(LED_R, OUTPUT); pinMode(LED_G, OUTPUT); 
@@ -16,99 +19,62 @@ void setup_display_hardware() {
     digitalWrite(LED_B, LOW); digitalWrite(BUZZER, LOW);
 }
 
-void showWelcome() {
-    xSemaphoreTake(settingsMutex, portMAX_DELAY);
-    lcd.clear();
-    bool hasStart = shared_hasDeadline;
-    int sH = shared_deadlineH, sM = shared_deadlineM;
-    bool hasEnd = shared_hasEndTime;
-    int eH = shared_endH, eM = shared_endM;
-    String msg = String(shared_serverMessage);
-    
-    lcd.setCursor(0, 0); 
-    if (hasStart) {
-        char buf[20]; sprintf(buf, "Bat dau:  %02d:%02d", sH, sM);
-        lcd.print(buf);
-    } else lcd.print("Bat dau:  --:--");
-
-    lcd.setCursor(0, 2); 
-    if (hasEnd) {
-        char buf[20]; sprintf(buf, "Ket thuc: %02d:%02d", eH, eM);
-        lcd.print(buf);
-    } else lcd.print("Ket thuc: --:--");
-    
-    lcd.setCursor(0, 3);
-    if (msg != "") lcd.print(">> " + msg.substring(0, 17));
-    xSemaphoreGive(settingsMutex);
-}
-
-void updateTimeDisplay() {
-    static unsigned long lastUpdate = 0;
-    if (millis() - lastUpdate >= 1000) {
-        lastUpdate = millis();
-        struct tm timeinfo;
-        if (!getLocalTime(&timeinfo, 10)) return; 
-        char timeBuff[20];
-        strftime(timeBuff, sizeof(timeBuff), "  %H:%M:%S  ", &timeinfo);
-        lcd.setCursor(4, 1); lcd.print(timeBuff); 
-    }
-}
-
-void triggerVisualFeedback(bool granted, String mssv, String name, int status, int session) {
+// Xử lý Còi và Đèn LED phản hồi trực quan
+void triggerVisualFeedback(bool granted, int status) {
     beepCounter = 0; 
     uiTimer = millis(); 
-    digitalWrite(BUZZER, HIGH);
+    digitalWrite(BUZZER, HIGH); 
 
-    lcd.clear();
     if (granted) {
-        lcd.setCursor(0, 0); lcd.print(name.substring(0, 20));
-        lcd.setCursor(0, 1); lcd.print("MSSV: " + mssv);
-        lcd.setCursor(0, 2); lcd.print("Ca diem danh: " + String(session));
-        lcd.setCursor(0, 3);
-        
-        if (status == 4) {
-            lcd.print("KQ: DA HET GIO!");
-            digitalWrite(LED_R, HIGH); targetBeeps = 3;
-            currentUIState = UI_DENIED_BEEP_ON;
-        } else if (status == 5) {
-            lcd.print("KQ: RA SOM!");
-            digitalWrite(LED_R, HIGH); targetBeeps = 2;
-            currentUIState = UI_DENIED_BEEP_ON;
-        } else if (status == 0) {
-            lcd.print("KQ: DUNG GIO");
+        if (status == STATUS_ON_TIME) {
             digitalWrite(LED_G, HIGH); 
             currentUIState = UI_GRANTED_BEEP_ON;
-        } else {
-            lcd.print(status == 1 ? "KQ: DI MUON" : "KQ: VANG (>15p)");
-            digitalWrite(LED_R, HIGH); targetBeeps = (status == 1 ? 1 : 5);
+        } 
+        else if (status == STATUS_LATE || status == STATUS_ABSENT) {
+            digitalWrite(LED_R, HIGH); 
+            targetBeeps = 1;
+            currentUIState = UI_DENIED_BEEP_ON;
+        } 
+        else if (status == STATUS_TOO_EARLY || status == STATUS_TIME_OVER) {
+            digitalWrite(LED_R, HIGH); 
+            targetBeeps = 3;
+            currentUIState = UI_DENIED_BEEP_ON;
+        } 
+        else {
+            digitalWrite(LED_R, HIGH); 
+            targetBeeps = 1;
             currentUIState = UI_DENIED_BEEP_ON;
         }
     } else {
-        lcd.setCursor(0, 0); lcd.print("ID: " + mssv);
-        lcd.setCursor(0, 2); lcd.print("THE KHONG HOP LE");
-        digitalWrite(LED_R, HIGH); targetBeeps = 3;
+        digitalWrite(LED_R, HIGH); 
+        targetBeeps = 3;
         currentUIState = UI_DENIED_BEEP_ON;
     }
 }
 
 void handle_ui_state_machine() {
     unsigned long now = millis();
-    xSemaphoreTake(settingsMutex, portMAX_DELAY);
-    bool isFire = shared_fireAlert;
-    xSemaphoreGive(settingsMutex);
+
+    // Kiểm tra cảnh báo cháy để hú còi liên tục
+    bool isFire = false;
+    if (settingsMutex != NULL && xSemaphoreTake(settingsMutex, pdMS_TO_TICKS(10)) == pdPASS) {
+        isFire = shared_fireAlert;
+        xSemaphoreGive(settingsMutex);
+    }
 
     if (isFire) {
         static unsigned long lastFireToggle = 0;
         static bool fireAlarmState = false;
-        if (now - lastFireToggle >= 300) {
+        if (now - lastFireToggle >= 250) {
             lastFireToggle = now;
             fireAlarmState = !fireAlarmState;
             digitalWrite(LED_R, fireAlarmState ? HIGH : LOW);
             digitalWrite(BUZZER, fireAlarmState ? HIGH : LOW);
-            digitalWrite(LED_G, LOW); digitalWrite(LED_B, LOW);
+            digitalWrite(LED_G, LOW);
+            digitalWrite(LED_B, LOW);
         }
-        currentUIState = UI_IDLE; 
-        return; 
+        currentUIState = UI_IDLE;
+        return;
     }
 
     switch (currentUIState) {
@@ -116,20 +82,26 @@ void handle_ui_state_machine() {
             if (now - uiTimer >= 150) { 
                 digitalWrite(BUZZER, LOW); 
                 currentUIState = UI_GRANTED_BEEP_OFF; 
-                uiTimer = now; }
+                uiTimer = now; 
+            }
             break;
+            
         case UI_GRANTED_BEEP_OFF:
             if (now - uiTimer >= 850) { 
                 digitalWrite(LED_G, LOW); 
                 currentUIState = UI_COOLDOWN; 
-                uiTimer = now; }
+                uiTimer = now; 
+            }
             break;
+            
         case UI_DENIED_BEEP_ON:
             if (now - uiTimer >= 150) { 
                 digitalWrite(BUZZER, LOW); 
                 currentUIState = UI_DENIED_BEEP_OFF; 
-                uiTimer = now; }
+                uiTimer = now; 
+            }
             break;
+            
         case UI_DENIED_BEEP_OFF:
             if (now - uiTimer >= 100) {
                 if (++beepCounter < targetBeeps) { 
@@ -143,87 +115,151 @@ void handle_ui_state_machine() {
                 uiTimer = now;
             }
             break;
+            
         case UI_COOLDOWN:
-            if (now - uiTimer >= 4000) { 
-                showWelcome(); 
+            if (now - uiTimer >= 3000) { 
+                lcd.clear(); 
                 currentUIState = UI_IDLE; 
             }
             break;
+            
         default: break;
     }
 }
 
-void checkNetworkFlags() {
-    xSemaphoreTake(settingsMutex, portMAX_DELAY);
-    if (flag_uiUpdateDeadline || flag_uiUpdateSession || flag_uiUpdateMsg) {
-        flag_uiUpdateDeadline = flag_uiUpdateSession = flag_uiUpdateMsg = false;
-        xSemaphoreGive(settingsMutex);
-        if (currentUIState == UI_IDLE) showWelcome();
-        return;
-    }
-    xSemaphoreGive(settingsMutex);
-}
-
 void displayTask(void *pvParameters) {
     setup_display_hardware();
-    showWelcome();
-    
+    lcd.clear();
+
     DisplayMessage msg;
-    bool isPasswordMode = false; // Cờ chặn cập nhật màn hình khi đang nhập mật khẩu
+    bool isPasswordMode = false;
+    struct tm timeinfo;
+    char lineBuffer[21];
 
     while (1) {
         handle_ui_state_machine();
 
-        if (xQueueReceive(displayQueue, &msg, 0) == pdPASS) {
-            // Nhận lệnh từ RFID hoặc Keypad
+        if (xQueueReceive(displayQueue, &msg, pdMS_TO_TICKS(50)) == pdPASS) {
             if (msg.cmd == CMD_SHOW_ATTENDANCE) {
                 isPasswordMode = false;
-                triggerVisualFeedback(msg.granted, String(msg.mssv), String(msg.name), msg.status, msg.session);
-            } 
-            else if (msg.cmd == CMD_SHOW_WELCOME) {
-                isPasswordMode = false;
-                showWelcome();
-                currentUIState = UI_IDLE;
+                lcd.clear();
+                
+                if (msg.granted) {
+                    lcd.setCursor(0, 0);
+                    snprintf(lineBuffer, sizeof(lineBuffer), "%-20.20s", msg.name);
+                    lcd.print(lineBuffer);
+
+                    lcd.setCursor(0, 1);
+                    switch(msg.status) {
+                        case STATUS_ON_TIME:   lcd.print("Trang thai: DUNG GIO"); break;
+                        case STATUS_LATE:      lcd.print("Trang thai: DI TRE  "); break;
+                        case STATUS_ABSENT:    lcd.print("Trang thai: VANG    "); break;
+                        case STATUS_TOO_EARLY: lcd.print("Loi: CHUA TOI GIO   "); break;
+                        case STATUS_TIME_OVER: lcd.print("Loi: CA HOC DA HET  "); break;
+                        default:               lcd.print("Trang thai: KHONG RO"); break;
+                    }
+
+                    lcd.setCursor(0, 2);
+                    snprintf(lineBuffer, sizeof(lineBuffer), "MSSV: %-14s", msg.mssv);
+                    lcd.print(lineBuffer);
+                } else {
+                    lcd.setCursor(0, 0);
+                    snprintf(lineBuffer, sizeof(lineBuffer), "ID: %-16s", msg.mssv);
+                    lcd.print(lineBuffer);
+
+                    lcd.setCursor(0, 2);
+                    lcd.print("THE KHONG HOP LE    ");
+                }
+                triggerVisualFeedback(msg.granted, msg.status);
             }
             else if (msg.cmd == CMD_SHOW_PASSWORD_UI) {
                 isPasswordMode = true;
+                currentUIState = UI_IDLE;
                 lcd.clear();
-                lcd.setCursor(0, 0); lcd.print("--- CHE DO PWD ---");
-                lcd.setCursor(0, 2); lcd.print("Nhap mat khau:");
+                lcd.setCursor(0, 0); lcd.print("--- CHE DO PWD ---  ");
+                lcd.setCursor(0, 2); lcd.print("Nhap mat khau:      ");
             }
             else if (msg.cmd == CMD_UPDATE_PWD_DOTS) {
                 isPasswordMode = true;
                 lcd.setCursor(0, 3);
-                String dots = "";
-                for(int i = 0; i < msg.pwd_len; i++) dots += "*";
-                lcd.print(dots);
+                char dots[21] = {0};
+                int dLen = msg.pwd_len > 8 ? 8 : msg.pwd_len;
+                for (int i = 0; i < dLen; i++) dots[i] = '*';
+                dots[dLen] = '\0';
+                snprintf(lineBuffer, sizeof(lineBuffer), "%-20s", dots);
+                lcd.print(lineBuffer);
             }
             else if (msg.cmd == CMD_SHOW_MSG_TEMP) {
                 isPasswordMode = false;
                 lcd.clear();
-                lcd.setCursor(0, 1); lcd.print(msg.name);
- 
-                int ledPin;
-                if (String(msg.name) == "MAT KHAU DUNG!") {
-                    ledPin = LED_G;
-                } else {
-                    ledPin = LED_R;
-                }
-                digitalWrite(ledPin, HIGH);
-                vTaskDelay(pdMS_TO_TICKS(2000));
-                digitalWrite(ledPin, LOW);
+                const char* textToShow = (strlen(msg.tempMsg) > 0) ? msg.tempMsg : msg.name;
+                lcd.setCursor(0, 1);
+                snprintf(lineBuffer, sizeof(lineBuffer), "%-20.20s", textToShow);
+                lcd.print(lineBuffer);
                 
-                showWelcome();
-                currentUIState = UI_IDLE;
+                if (strcmp(textToShow, "MAT KHAU DUNG!") == 0) {
+                    triggerVisualFeedback(true, STATUS_ON_TIME);
+                } else {
+                    triggerVisualFeedback(false, STATUS_LATE);
+                }
             }
-        } else {
-            // Cập nhật đồng hồ và trạng thái mạng chỉ khi rảnh rỗi và KHÔNG ở chế độ mật khẩu
+        } 
+        else {
+            // Chế độ màn hình chính (IDLE): Cập nhật mỗi giây
             if (currentUIState == UI_IDLE && !isPasswordMode) {
-                updateTimeDisplay();
-                checkNetworkFlags(); 
+                static unsigned long lastTimeUpdate = 0;
+                
+                if (millis() - lastTimeUpdate >= 1000) {
+                    lastTimeUpdate = millis();
+                    
+                    if (getLocalTime(&timeinfo, 10)) {
+                        // Dòng 0: Đồng hồ
+                        snprintf(lineBuffer, sizeof(lineBuffer), "Time: %02d:%02d:%02d      ",
+                                 timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+                        lcd.setCursor(0, 0);
+                        lcd.print(lineBuffer);
+                        
+                        // Đọc an toàn thông tin lớp học dưới Mutex
+                        char localClassName[32] = "";
+                        int localStartH = 0, localStartM = 0;
+                        int localEndH = 0, localEndM = 0;
+                        bool localHasQuery = false;
+
+                        if (settingsMutex != NULL && xSemaphoreTake(settingsMutex, pdMS_TO_TICKS(20)) == pdPASS) {
+                            localHasQuery = hasActiveQuery;
+                            if (localHasQuery) {
+                                strncpy(localClassName, currentClassName, sizeof(localClassName) - 1);
+                                localClassName[sizeof(localClassName) - 1] = '\0';
+                                localStartH = currentClassStartH;
+                                localStartM = currentClassStartM;
+                                localEndH = currentClassEndH;
+                                localEndM = currentClassEndM;
+                            }
+                            xSemaphoreGive(settingsMutex);
+                        }
+
+                        // Dòng 1 & 2: Thông tin lớp học
+                        lcd.setCursor(0, 1);
+                        if (localHasQuery) {
+                            snprintf(lineBuffer, sizeof(lineBuffer), "%-20.20s", localClassName);
+                            lcd.print(lineBuffer);
+
+                            lcd.setCursor(0, 2);
+                            snprintf(lineBuffer, sizeof(lineBuffer), "Ca: %02d:%02d - %02d:%02d   ",
+                                     localStartH, localStartM, localEndH, localEndM);
+                            lcd.print(lineBuffer);
+                        } else {
+                            lcd.print("KHONG CO LOP HOC    ");
+                            lcd.setCursor(0, 2);
+                            lcd.print("Moi quet the...     ");
+                        }
+
+                        // Dòng 3: Tiêu đề
+                        lcd.setCursor(0, 3);
+                        lcd.print("HE THONG DIEM DANH  ");
+                    }
+                }
             }
         }
-        
-        vTaskDelay(pdMS_TO_TICKS(20)); // Nhường CPU
     }
 }
