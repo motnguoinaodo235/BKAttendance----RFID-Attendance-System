@@ -126,14 +126,14 @@ exports.assignRfid = async (req, res) => {
 
 exports.updateStudent = async (req, res) => {
   const { id } = req.params;
-  const { name, rfidUid, classId } = req.body;
+  const { code, name, rfidUid, classId } = req.body;
 
-  if (!name) {
-    return res.status(400).json({ success: false, message: 'Tên là bắt buộc' });
+  if (!code || !name) {
+    return res.status(400).json({ success: false, message: 'Mã sinh viên và tên là bắt buộc' });
   }
 
   try {
-    await StudentModel.updateStudent(id, name, rfidUid || null, classId || null);
+    await StudentModel.updateStudent(id, code, name, rfidUid ?? null, classId ?? null);
     res.json({ success: true, message: 'Cập nhật thông tin sinh viên thành công' });
   } catch (error) {
     console.error('Database error in updateStudent:', error);

@@ -44,6 +44,9 @@ export const getLecturers = async () => {
 export const getClasses = async () => {
   const res = await fetch(`${API_URL}/classes`);
   const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.message || 'Không thể tải danh sách lớp học');
+  }
   return data.data || [];
 };
 
@@ -165,6 +168,9 @@ export const getSessions = async (filters = {}) => {
   const url = query ? `${API_URL}/sessions?${query}` : `${API_URL}/sessions`;
   const res = await fetch(url);
   const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.message || 'Không thể tải danh sách buổi học');
+  }
   return data.data || [];
 };
 

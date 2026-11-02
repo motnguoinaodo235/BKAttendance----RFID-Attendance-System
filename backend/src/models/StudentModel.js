@@ -18,6 +18,7 @@ class StudentModel {
         s.student_code as code,
         s.name,
         GROUP_CONCAT(DISTINCT c.class_name SEPARATOR ', ') as class,
+        MIN(cs.class_id) as class_id,
         rc.rfid_uid
       FROM students s
       LEFT JOIN class_students cs ON s.student_id = cs.student_id
@@ -31,29 +32,140 @@ class StudentModel {
   }
 
   static async createStudent(studentCode, name, rfidUid = null, classId = null) {
-    const [rows] = await db.execute(
-      'CALL sp_add_student(?, ?, ?, ?)',
-      [studentCode, name, rfidUid, classId]
-    );
-    return rows[0][0];
+    const connection = await db.getConnection();
+    try {
+      await connection.beginTransaction();
+      const [result] = await connection.execute(
+        'INSERT INTO students (student_code, name) VALUES (?, ?)',
+        [studentCode.trim(), name.trim()]
+      );
+
+      if (rfidUid && rfidUid.trim()) {
+        await connection.execute(
+          'INSERT INTO rfid_cards (rfid_uid, student_id) VALUES (?, ?)',
+          [rfidUid.trim().toUpperCase(), result.insertId]
+        );
+      }
+
+      if (classId) {
+        await connection.execute(
+          'INSERT INTO class_students (class_id, student_id) VALUES (?, ?)',
+          [classId, result.insertId]
+        );
+      }
+
+      await connection.commit();
+      return { student_id: result.insertId };
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
   }
 
   static async assignRfid(studentId, rfidUid) {
-    await db.execute(
-      'CALL sp_update_student(?, NULL, NULL, ?)',
-      [studentId, rfidUid]
-    );
+    const connection = await db.getConnection();
+    try {
+      await connection.beginTransaction();
+      const [students] = await connection.execute(
+        'SELECT student_id FROM students WHERE student_id = ?',
+        [studentId]
+      );
+      if (students.length === 0) {
+        throw new Error('Không tìm thấy sinh viên');
+      }
+
+      const [cards] = await connection.execute(
+        'SELECT card_id FROM rfid_cards WHERE student_id = ?',
+        [studentId]
+      );
+      await connection.execute(
+        'DELETE FROM rfid_cards WHERE student_id = ?',
+        [studentId]
+      );
+      await connection.execute(
+        'INSERT INTO rfid_cards (rfid_uid, student_id) VALUES (?, ?)',
+        [rfidUid.trim().toUpperCase(), studentId]
+      );
+      await connection.commit();
+      return cards.length === 0;
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
   }
 
-  static async updateStudent(studentId, name, studentCode, rfidUid = null) {
-    await db.execute(
-      'CALL sp_update_student(?, ?, ?, ?)',
-      [studentId, studentCode, name, rfidUid]
-    );
+  static async updateStudent(studentId, studentCode, name, rfidUid = null, classId = undefined) {
+    const connection = await db.getConnection();
+    try {
+      await connection.beginTransaction();
+      const [students] = await connection.execute(
+        'SELECT student_id FROM students WHERE student_id = ?',
+        [studentId]
+      );
+      if (students.length === 0) {
+        throw new Error('Không tìm thấy sinh viên');
+      }
+
+      await connection.execute(
+        'UPDATE students SET student_code = ?, name = ? WHERE student_id = ?',
+        [studentCode.trim(), name.trim(), studentId]
+      );
+
+      if (classId !== undefined && classId !== null) {
+        await connection.execute(
+          'INSERT IGNORE INTO class_students (class_id, student_id) VALUES (?, ?)',
+          [classId, studentId]
+        );
+      }
+
+      if (rfidUid !== null) {
+        await connection.execute(
+          'DELETE FROM rfid_cards WHERE student_id = ?',
+          [studentId]
+        );
+        if (rfidUid.trim()) {
+          await connection.execute(
+            'INSERT INTO rfid_cards (rfid_uid, student_id) VALUES (?, ?)',
+            [rfidUid.trim().toUpperCase(), studentId]
+          );
+        }
+      }
+
+      await connection.commit();
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
   }
 
   static async deleteStudent(studentId) {
-    await db.execute('CALL sp_delete_student(?)', [studentId]);
+    const connection = await db.getConnection();
+    try {
+      await connection.beginTransaction();
+      await connection.execute(
+        'DELETE FROM rfid_cards WHERE student_id = ?',
+        [studentId]
+      );
+      const [result] = await connection.execute(
+        'DELETE FROM students WHERE student_id = ?',
+        [studentId]
+      );
+      if (result.affectedRows === 0) {
+        throw new Error('Không tìm thấy sinh viên');
+      }
+      await connection.commit();
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
   }
 }
 

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Search, User, Pencil, Trash2, ChevronLeft, ScanLine } from 'lucide-react';
-import { getStudents, createStudent, updateStudent, deleteStudent } from '../../services/api';
+import { Search, User, Pencil, Trash2, ChevronLeft, ScanLine, CalendarDays } from 'lucide-react';
+import { getStudents, getClasses, getSessions, createStudent, updateStudent, deleteStudent } from '../../services/api';
+import { socket } from '../../services/socket';
 
 export default function AdminStudents() {
   const [students, setStudents] = useState([]);
@@ -15,13 +16,23 @@ export default function AdminStudents() {
   const [editCode, setEditCode] = useState('');
   const [rfidValue, setRfidValue] = useState('');
   const [isScanning, setIsScanning] = useState(false);
+  const [scanMessage, setScanMessage] = useState('');
+  const [classes, setClasses] = useState([]);
+  const [selectedClassId, setSelectedClassId] = useState('');
+  const [sessions, setSessions] = useState([]);
+  const [classesLoading, setClassesLoading] = useState(true);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
+  const [classError, setClassError] = useState('');
+  const [sessionsError, setSessionsError] = useState('');
 
   const loadStudents = async () => {
     try {
       const data = await getStudents();
       setStudents(data);
+      return data;
     } catch (err) {
       console.error('Lỗi tải danh sách sinh viên:', err);
+      return [];
     } finally {
       setLoading(false);
     }
@@ -31,12 +42,82 @@ export default function AdminStudents() {
     loadStudents();
   }, []);
 
+  useEffect(() => {
+    let active = true;
+    getClasses()
+      .then(data => {
+        if (active) setClasses(data);
+      })
+      .catch(err => {
+        console.error('Lỗi tải danh sách lớp:', err);
+        if (active) setClassError('Không thể tải danh sách lớp học.');
+      })
+      .finally(() => {
+        if (active) setClassesLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!selectedClassId) {
+      setSessions([]);
+      setSessionsError('');
+      return undefined;
+    }
+
+    let active = true;
+    setSessionsLoading(true);
+    setSessionsError('');
+    getSessions({ classId: selectedClassId })
+      .then(data => {
+        if (active) setSessions(data);
+      })
+      .catch(err => {
+        console.error('Lỗi tải buổi học của lớp:', err);
+        if (active) setSessionsError('Không thể tải buổi học của lớp này.');
+      })
+      .finally(() => {
+        if (active) setSessionsLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [selectedClassId]);
+
+  useEffect(() => {
+    if (!isScanning) return undefined;
+
+    const handleNewData = (data) => {
+      if (!data?.uid) return;
+      setRfidValue(data.uid);
+      setScanMessage(`Đã nhận mã thẻ: ${data.uid}`);
+      setIsScanning(false);
+    };
+
+    socket.on('new_data', handleNewData);
+    const timeoutId = setTimeout(() => {
+      setScanMessage('Hết thời gian chờ. Vui lòng thử quét lại.');
+      setIsScanning(false);
+    }, 30000);
+
+    return () => {
+      socket.off('new_data', handleNewData);
+      clearTimeout(timeoutId);
+    };
+  }, [isScanning]);
+
   const openAddModal = () => {
     setModalMode('add');
     setEditingStudent(null);
     setEditName('');
     setEditCode('');
     setRfidValue('');
+    setScanMessage('');
+    setSelectedClassId('');
     setShowModal(true);
   };
 
@@ -47,6 +128,8 @@ export default function AdminStudents() {
     setEditName(student.name || '');
     setEditCode(student.code || '');
     setRfidValue(student.rfid_uid || '');
+    setScanMessage('');
+    setSelectedClassId(student.class_id ? String(student.class_id) : '');
     setShowModal(true);
   };
 
@@ -66,7 +149,8 @@ export default function AdminStudents() {
       const payload = {
         name: editName.trim(),
         code: editCode.trim(),
-        rfidUid: rfidValue.trim() || null
+        rfidUid: rfidValue.trim() || null,
+        classId: selectedClassId ? Number(selectedClassId) : null
       };
 
       const result = modalMode === 'add'
@@ -78,10 +162,11 @@ export default function AdminStudents() {
         return;
       }
 
-      await loadStudents();
+      const refreshedStudents = await loadStudents();
 
       if (selectedStudent && editingStudent && selectedStudent.id === editingStudent.id) {
-        setSelectedStudent({ ...selectedStudent, name: editName, code: editCode, rfid_uid: rfidValue });
+        const refreshedStudent = refreshedStudents.find(student => student.id === selectedStudent.id);
+        if (refreshedStudent) setSelectedStudent(refreshedStudent);
       }
 
       alert(result.message || (modalMode === 'add' ? 'Thêm sinh viên thành công' : 'Cập nhật thành công'));
@@ -114,11 +199,13 @@ export default function AdminStudents() {
   };
 
   const handleScanRfid = () => {
+    if (!socket.connected) {
+      setScanMessage('Chưa kết nối server. Vui lòng kiểm tra backend.');
+      return;
+    }
+
+    setScanMessage('');
     setIsScanning(true);
-    setTimeout(() => {
-      setRfidValue('A3B4C5D6');
-      setIsScanning(false);
-    }, 3000);
   };
 
   const filteredStudents = students?.filter(student =>
@@ -272,6 +359,59 @@ export default function AdminStudents() {
                   <label className="form-label fw-medium">Mã số sinh viên (MSSV) *</label>
                   <input type="text" className="form-control" value={editCode} onChange={(e) => setEditCode(e.target.value)} />
                 </div>
+                <div className="mb-3">
+                  <label className="form-label fw-medium">Lớp học</label>
+                  <select
+                    className="form-select"
+                    value={selectedClassId}
+                    onChange={(e) => setSelectedClassId(e.target.value)}
+                    disabled={classesLoading || Boolean(classError)}
+                  >
+                    <option value="">
+                      {classesLoading
+                        ? 'Đang tải lớp học...'
+                        : classError
+                          ? 'Không tải được lớp học'
+                          : modalMode === 'edit'
+                            ? 'Không thêm lớp mới'
+                            : 'Chưa xếp lớp'}
+                    </option>
+                    {classes.map(classItem => (
+                      <option key={classItem.id} value={classItem.id}>{classItem.name}</option>
+                    ))}
+                  </select>
+                  {classError && <div className="form-text text-danger">{classError}</div>}
+                </div>
+                {selectedClassId && (
+                  <div className="mb-4">
+                    <label className="form-label fw-medium d-flex align-items-center gap-2">
+                      <CalendarDays size={16} /> Buổi học của lớp
+                    </label>
+                    {sessionsLoading ? (
+                      <div className="form-text">Đang tải buổi học...</div>
+                    ) : sessionsError ? (
+                      <div className="form-text text-danger">{sessionsError}</div>
+                    ) : sessions.length === 0 ? (
+                      <div className="form-text">Lớp này chưa có buổi học. Các buổi học tạo sau sẽ tự áp dụng cho sinh viên trong lớp.</div>
+                    ) : (
+                      <ul className="list-group">
+                        {sessions.map(session => (
+                          <li key={session.session_id} className="list-group-item py-2">
+                            <span className="fw-medium">
+                              {new Date(`${session.session_date}T00:00:00`).toLocaleDateString('vi-VN')}
+                            </span>
+                            <span className="text-secondary ms-2">
+                              {String(session.start_time).slice(0, 5)} - {String(session.end_time).slice(0, 5)}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    <div className="form-text">
+                      Buổi học của lớp đã chọn sẽ áp dụng cho sinh viên. Các lớp đã gắn trước đó vẫn được giữ.
+                    </div>
+                  </div>
+                )}
                 <div className="mb-4">
                   <label className="form-label fw-medium text-primary">Mã thẻ RFID</label>
                   <div className="input-group">
@@ -291,11 +431,17 @@ export default function AdminStudents() {
                       <ScanLine size={18} /> {isScanning ? 'Đang chờ thẻ...' : 'Quét thẻ'}
                     </button>
                   </div>
+                  {scanMessage && <div className="form-text">{scanMessage}</div>}
                 </div>
               </div>
               <div className="modal-footer border-top-0 pt-0">
                 <button type="button" className="btn btn-light" onClick={closeModal}>Hủy bỏ</button>
-                <button type="button" className="btn btn-primary px-4" onClick={handleSave}>
+                <button
+                  type="button"
+                  className="btn btn-primary px-4"
+                  onClick={handleSave}
+                  disabled={classesLoading || Boolean(classError)}
+                >
                   {modalMode === 'add' ? 'Thêm sinh viên' : 'Lưu thông tin'}
                 </button>
               </div>
