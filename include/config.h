@@ -4,8 +4,8 @@
 #include <Arduino.h>
 
 //===================== WIFI ====================
-#define WIFI_SSID         "Bao Ngoc 4"
-#define WIFI_PASSWORD     "@BaoNgoc4"
+#define WIFI_SSID         "Wokwi-GUEST"
+#define WIFI_PASSWORD     ""
 
 //===================== MQTT ====================
 #define MQTT_BROKER       "broker.hivemq.com"

@@ -59,6 +59,9 @@ void sensorTask(void *pvParameters) {
     dht.begin();
     bool mlReady = setupTinyML();
 
+    // Đếm số lần đọc (dùng cho timestamp trong chế độ data log)
+    unsigned long sampleCount = 0;
+
     while (1) {
         // DHT22 yêu cầu khoảng 2 giây giữa các lần đọc
         vTaskDelay(pdMS_TO_TICKS(2000)); 
@@ -72,7 +75,9 @@ void sensorTask(void *pvParameters) {
             continue;
         }
 
+        sampleCount++;
         bool isFire = false;
+        float anomaly_score = -1.0f;
 
         if (mlReady && input != nullptr && output != nullptr) {
             // Nạp dữ liệu: [Nhiệt độ, Độ ẩm]
@@ -81,8 +86,7 @@ void sensorTask(void *pvParameters) {
 
             TfLiteStatus invoke_status = interpreter->Invoke();
             if (invoke_status == kTfLiteOk) {
-                float anomaly_score = output->data.f[0];
-                Serial.printf("[DHT22] T: %.1fC - H: %.1f%% -> Nguy co chay: %.1f%%\n", t, h, anomaly_score * 100);
+                anomaly_score = output->data.f[0];
                 
                 if (anomaly_score > 0.80f) {
                     isFire = true;
@@ -95,6 +99,26 @@ void sensorTask(void *pvParameters) {
             if (t > 60.0f || (t > 50.0f && h < 20.0f)) {
                 isFire = true;
             }
+        }
+
+        // ════════════════════════════════════════════════════════════
+        // CHẾ ĐỘ GHI DỮ LIỆU (DATA LOG) cho pipeline TinyML
+        // Luôn in dòng CSV qua Serial để script Python có thể thu thập.
+        // Định dạng: [DHT_DATA] timestamp_ms,temperature,humidity,anomaly_score,fire_label
+        //   - fire_label: 0 = Bình thường, 1 = Bất thường / Cháy
+        //   - anomaly_score: -1.0 nếu TinyML chưa sẵn sàng
+        // Script collect_data.py sẽ parse dòng có prefix [DHT_DATA]
+        // ════════════════════════════════════════════════════════════
+        Serial.printf("[DHT_DATA] %lu,%.2f,%.2f,%.4f,%d\n",
+            millis(), t, h, anomaly_score, isFire ? 1 : 0);
+
+        // Log thông thường với chi tiết TinyML
+        if (anomaly_score >= 0.0f) {
+            Serial.printf("[DHT22] T: %.1fC - H: %.1f%% -> Nguy co chay: %.1f%% | Sample #%lu\n",
+                t, h, anomaly_score * 100.0f, sampleCount);
+        } else {
+            Serial.printf("[DHT22] T: %.1fC - H: %.1f%% | TinyML chua san sang | Sample #%lu\n",
+                t, h, sampleCount);
         }
 
         // Cập nhật biến toàn cục an toàn dưới Mutex

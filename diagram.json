@@ -1,0 +1,123 @@
+
+{
+  "version": 1,
+  "author": "ESP32 RFID Attendance System",
+  "editor": "wokwi",
+  "parts": [
+    {
+      "type": "board-esp32-devkit-c-v4",
+      "id": "esp",
+      "top": 100,
+      "left": 0,
+      "attrs": {}
+    },
+    {
+      "type": "board-mfrc522",
+      "id": "rfid",
+      "top": -180,
+      "left": 400,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-lcd2004",
+      "id": "lcd",
+      "top": -220,
+      "left": -300,
+      "attrs": {
+        "pins": "i2c"
+      }
+    },
+    {
+      "type": "wokwi-dht22",
+      "id": "dht",
+      "top": -100,
+      "left": -300,
+      "attrs": {
+        "temperature": "28",
+        "humidity": "65"
+      }
+    },
+    {
+      "type": "wokwi-servo",
+      "id": "servo",
+      "top": 400,
+      "left": 400,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-rgb-led",
+      "id": "rgb",
+      "top": 400,
+      "left": -300,
+      "attrs": {
+        "common": "cathode"
+      }
+    },
+    {
+      "type": "wokwi-buzzer",
+      "id": "buzzer",
+      "top": 400,
+      "left": -100,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-membrane-keypad",
+      "id": "keypad",
+      "top": 250,
+      "left": -300,
+      "attrs": {
+        "columns": "3",
+        "keys": [
+          "1", "2", "3",
+          "4", "5", "6",
+          "7", "8", "9"
+        ]
+      }
+    }
+  ],
+  "connections": [
+
+    ["esp:5", "rfid:SDA", "green", []],
+    ["esp:4", "rfid:RST", "green", []],
+    ["esp:18", "rfid:SCK", "green", []],
+    ["esp:23", "rfid:MOSI", "green", []],
+    ["esp:19", "rfid:MISO", "green", []],
+    ["esp:3V3", "rfid:3.3V", "red", []],
+    ["esp:GND.1", "rfid:GND", "black", []],
+
+
+    ["esp:21", "lcd:SDA", "green", []],
+    ["esp:22", "lcd:SCL", "green", []],
+    ["esp:5V", "lcd:VCC", "red", []],
+    ["esp:GND.1", "lcd:GND", "black", []],
+
+    ["esp:15", "dht:SDA", "green", []],
+    ["esp:3V3", "dht:VCC", "red", []],
+    ["esp:GND.1", "dht:GND", "black", []],
+
+
+    ["esp:27", "servo:PWM", "orange", []],
+    ["esp:5V", "servo:V+", "red", []],
+    ["esp:GND.1", "servo:GND", "black", []],
+
+
+    ["esp:13", "rgb:R", "red", []],
+    ["esp:14", "rgb:G", "green", []],
+    ["esp:12", "rgb:B", "blue", []],
+    ["esp:GND.1", "rgb:COM", "black", []],
+
+
+    ["esp:2", "buzzer:2", "orange", []],
+    ["esp:GND.1", "buzzer:1", "black", []],
+
+
+    ["esp:26", "keypad:R1", "blue", []],
+    ["esp:17", "keypad:R2", "blue", []],
+    ["esp:16", "keypad:R3", "blue", []],
+
+
+    ["esp:32", "keypad:C1", "yellow", []],
+    ["esp:33", "keypad:C2", "yellow", []],
+    ["esp:25", "keypad:C3", "yellow", []]
+  ]
+}

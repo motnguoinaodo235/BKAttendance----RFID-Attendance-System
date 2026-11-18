@@ -1,0 +1,17 @@
+{
+  "trained_at": "2026-11-17T22:56:37.356811",
+  "data_files": [
+    "synthetic_data.csv"
+  ],
+  "num_samples": 1000,
+  "architecture": "Dense(8, relu) → Dense(1, sigmoid)",
+  "input_features": [
+    "temperature (°C)",
+    "humidity (%)"
+  ],
+  "output": "anomaly_score (0.0 ~ 1.0)",
+  "threshold": 0.8,
+  "accuracy": 1.0,
+  "model_size_bytes": 1812,
+  "normalization": "None (raw input — khớp firmware)"
+}

@@ -49,11 +49,11 @@ void setup() {
     xTaskCreatePinnedToCore(rfidTask, "RFID", 4096, NULL, 1, NULL, 1);
 
     // Core 1: Điều khiển Servo mở/đóng cổng
-    xTaskCreatePinnedToCore(servoTask, "Servo", 2048, NULL, 1, NULL, 1);
+    // xTaskCreatePinnedToCore(servoTask, "Servo", 2048, NULL, 1, NULL, 1);
 
     // Cac Task tuy chon phan cung (Bat/tat theo nhu cau):
     xTaskCreatePinnedToCore(sensorTask, "Sensor", 8192, NULL, 1, NULL, 0);
-    xTaskCreatePinnedToCore(keypadTask, "Keypad", 3072, NULL, 1, NULL, 1);
+    // xTaskCreatePinnedToCore(keypadTask, "Keypad", 3072, NULL, 1, NULL, 1);
 }
 
 void loop() {
